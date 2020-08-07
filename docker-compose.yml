@@ -1,0 +1,123 @@
+version: '3'
+
+services:
+  cezerin-api:
+    image: node:12.16.3
+    working_dir: /data
+    environment:
+      - DEVELOPER_MODE=${DEVELOPER_MODE}
+      - LANGUAGE=${LANGUAGE}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - COOKIE_SECRET_KEY=${COOKIE_SECRET_KEY}
+      - DB_HOST=db
+      - DB_PORT=27017
+      - DB_NAME=${DB_NAME}
+      - DB_USER=
+      - DB_PASS=
+      - ASSETS_TYPE=minio
+      - ASSETS_BASE_URL=${APP_PROTOCOL}${APP_DOMAIN_STATIC}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+      - STORE_BASE_URL=${APP_PROTOCOL}${APP_DOMAIN}
+      - ADMIN_BASE_URL=${APP_PROTOCOL}${APP_DOMAIN_ADMIN}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_SECURE=${SMTP_SECURE}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - SMTP_FROM_NAME=${SMTP_FROM_NAME}
+      - SMTP_FROM_ADDRESS=${SMTP_FROM_ADDRESS}
+    volumes:
+      - ./cezerin2:/data
+    depends_on:
+      - db
+      - minio
+    command: bash -c "npm install && npm run compile || true && npm run start"
+    restart: always
+
+  cezerin-store:
+    image: node:12.16.3
+    working_dir: /data
+    environment:
+      - DEVELOPER_MODE=${DEVELOPER_MODE}
+      - LANGUAGE=${LANGUAGE}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - COOKIE_SECRET_KEY=${COOKIE_SECRET_KEY}
+      - API_BASE_URL=http://cezerin-api:3001/api/v1
+      - AJAX_BASE_URL=http://cezerin-api:3001/ajax
+      - CLIENT_AJAX_BASE_URL=${APP_PROTOCOL}${APP_DOMAIN}/ajax
+    volumes:
+      - ./cezerin2-store:/data
+    depends_on:
+      - cezerin-api
+    command: bash -c "npm install && npm run compile || true && npm run build && npm run start"
+    restart: always
+
+  cezerin-admin:
+    image: node:12.16.3
+    working_dir: /data
+    environment:
+      - DEVELOPER_MODE=${DEVELOPER_MODE}
+      - LANGUAGE=${LANGUAGE}
+      - API_BASE_URL=${APP_PROTOCOL}${APP_DOMAIN}/api/v1
+      - API_WEB_SOCKET_URL=wss://${APP_DOMAIN}
+    volumes:
+      - ./cezerin2-admin:/data
+    depends_on:
+      - cezerin-api
+    command: bash -c "npm install && npm run compile || true && npm run build || true && node ./node_modules/.bin/pm2 serve ./dist 3002 --no-daemon"
+    restart: always
+
+  db:
+    image: mongo:3.4
+    volumes:
+      - ./__storage/mongo:/data/db
+    restart: always
+
+  minio:
+    image: minio/minio:RELEASE.2020-05-08T02-40-49Z
+    volumes:
+      - ./__storage/minio-data:/data
+      - ./__storage/minio-config:/root/.minio
+    ports:
+      - "9001:9000"
+    environment:
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+    command: server /data
+    restart: always
+
+  nginx:
+    image: nginx:alpine
+    depends_on:
+      - minio
+      - cezerin-admin
+      - cezerin-api
+      - cezerin-store
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/sites-available:/etc/nginx/sites-available
+      - ./__storage/nginx-cache:/tmp/nginx-images-cache2
+    restart: always
+
+  caddy:
+    build: ./caddy
+    environment:
+      - APP_DOMAIN=${APP_DOMAIN}
+      - APP_DOMAIN_ADMIN=${APP_DOMAIN_ADMIN}
+      - APP_DOMAIN_STATIC=${APP_DOMAIN_STATIC}
+    volumes:
+      - ./caddy/caddy:/etc/caddy
+      - ./__logs/caddy:/var/log/caddy
+      - ./__storage/caddy:/root/.caddy
+    ports:
+      - 80:80
+      - 443:443
+      - 3001:3001
+      - 3002:3002
+      - 8887:8887
+    depends_on:
+      - minio
+      - cezerin-admin
+      - cezerin-api
+      - cezerin-store

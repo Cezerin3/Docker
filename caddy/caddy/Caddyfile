@@ -1,0 +1,32 @@
+{$APP_DOMAIN}
+{
+    proxy / cezerin-store:3000 {
+        transparent
+    }
+
+    proxy /api cezerin-api:3001 {
+        transparent
+        websocket
+    }
+
+    proxy /ajax cezerin-api:3001 {
+        transparent
+        websocket
+    }
+}
+
+{$APP_DOMAIN_ADMIN}
+{
+    proxy / cezerin-admin:3002 {
+        transparent
+        websocket
+    }
+}
+
+{$APP_DOMAIN_STATIC}
+{
+    proxy / nginx:8887 {
+        transparent
+        websocket
+    }
+}
